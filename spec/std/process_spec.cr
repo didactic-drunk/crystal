@@ -85,6 +85,77 @@ describe Process do
     $?.exit_code.should eq(0)
   end
 
+  it "getuid" do
+    Process.uid.should eq `id -u`.to_i
+    Process.uid.should eq Process.euid
+  end
+
+  it "getgid" do
+    Process.gid.should eq `id -g`.to_i
+    Process.gid.should eq Process.egid
+  end
+
+  it "setresuid" do
+    success = false
+    ruid = Process.uid
+    euid = Process.euid
+
+    begin
+      # Leave ruid at 0 to switch back
+      Process.setresuid(0, 8888, 9999)
+      Process.euid.should eq 8888
+      success = true
+    rescue ex : Errno
+      # Ok for non-root
+    ensure
+      Process.setresuid(ruid, euid) if success
+    end
+
+    if euid == 0
+      success.should be_true
+    else
+      success.should be_false
+    end
+  end
+
+  it "setresgid" do
+    success = false
+    rgid = Process.gid
+    egid = Process.egid
+
+    begin
+      Process.setresgid(7777, 8888, 9999)
+      Process.gid.should eq 7777
+      success = true
+    rescue ex : Errno
+      # Ok for non-root
+    ensure
+      Process.setresgid(rgid, egid) if success
+    end
+
+    if Process.euid == 0
+      success.should be_true
+    else
+      success.should be_false
+    end
+  end
+
+  it "setresuid raises when only setting suid on unsupported platforms" do
+    if !LibC.responds_to?(:setresuid) && LibC.responds_to?(:setreuid)
+      expect_raises_errno(Errno::ENOSYS) do
+        Process.setresuid(suid: 55)
+      end
+    end
+  end
+
+  it "setresgid raises when only setting sgid on unsupported platforms" do
+    if !LibC.responds_to?(:setresgid) && LibC.responds_to?(:setregid)
+      expect_raises_errno(Errno::ENOSYS) do
+        Process.setresgid(sgid: 55)
+      end
+    end
+  end
+
   it "chroot raises when unprivileged" do
     status, output = build_and_run <<-'CODE'
       begin
