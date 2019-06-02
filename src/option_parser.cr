@@ -65,6 +65,24 @@ class OptionParser
     parse(ARGV) { |parser| yield parser }
   end
 
+  # Creates a new parser, with its configuration specified in the block,
+  # and uses it to parse the passed *args*.
+  # Stops at first non-dash argument.
+  def self.order(args) : self
+    parser = OptionParser.new
+    yield parser
+    parser.order(args)
+    parser
+  end
+
+  # Creates a new parser, with its configuration specified in the block,
+  # and uses it to parse the arguments passed to the program.
+  # Stops at first non-dash argument.
+  def self.order! : self
+    order(ARGV) { |parser| yield parser }
+  end
+
+
   protected property flags : Array(String)
   protected property handlers : Array(Handler)
   protected property unknown_args
@@ -186,10 +204,25 @@ class OptionParser
     ParseTask.new(self, args).parse
   end
 
+  # Parses the passed *args*, running the handlers associated to each option.
+  # Stops at first non-dash argument.
+  # Most used with subcommands.
+  def order(args)
+    ParseTask.new(self, args, order: true).parse
+  end
+
   # Parses the passed the arguments passed to the program,
   # running the handlers associated to each option.
   def parse!
     parse ARGV
+  end
+
+  # Parses the passed the arguments passed to the program,
+  # running the handlers associated to each option.
+  # Stops at first non-dash argument.
+  # Most used with subcommands.
+  def order!
+    order ARGV
   end
 
   private def check_starts_with_dash(arg, name, allow_empty = false)
@@ -201,10 +234,19 @@ class OptionParser
   end
 
   private struct ParseTask
-    @double_dash_index : Int32?
+    @stop_index : Int32?
 
-    def initialize(@parser : OptionParser, @args : Array(String))
-      double_dash_index = @double_dash_index = @args.index("--")
+    def initialize(@parser : OptionParser, @args : Array(String), order = false)
+      double_dash_index = @stop_index = @args.index("--")
+
+      # stop at first nondash param unless "--" comes earlier
+      if order && (order_index = @args.index { |arg| arg =~ /^[^\-]/ })
+        unless (ddi = double_dash_index) && ddi < order_index
+          @stop_index = order_index
+          double_dash_index = nil
+        end
+      end
+
       if double_dash_index
         @args.delete_at(double_dash_index)
       end
@@ -216,10 +258,10 @@ class OptionParser
       end
 
       if unknown_args = @parser.unknown_args
-        double_dash_index = @double_dash_index
-        if double_dash_index
-          before_dash = @args[0...double_dash_index]
-          after_dash = @args[double_dash_index..-1]
+        stop_index = @stop_index
+        if stop_index
+          before_dash = @args[0...stop_index]
+          after_dash = @args[stop_index..-1]
         else
           before_dash = @args
           after_dash = [] of String
@@ -298,7 +340,7 @@ class OptionParser
     end
 
     private def args_size
-      @double_dash_index || @args.size
+      @stop_index || @args.size
     end
 
     private def args_index(flag)
@@ -308,7 +350,7 @@ class OptionParser
     private def args_index
       index = @args.index { |arg| yield arg }
       if index
-        if (double_dash_index = @double_dash_index) && index >= double_dash_index
+        if (stop_index = @stop_index) && index >= stop_index
           return nil
         end
       end
@@ -317,19 +359,19 @@ class OptionParser
 
     private def delete_arg_at_index(index)
       arg = @args.delete_at(index)
-      decrement_double_dash_index
+      decrement_stop_index
       arg
     end
 
-    private def decrement_double_dash_index
-      if double_dash_index = @double_dash_index
-        @double_dash_index = double_dash_index - 1
+    private def decrement_stop_index
+      if stop_index = @stop_index
+        @stop_index = stop_index - 1
       end
     end
 
     private def check_invalid_options
       @args.each_with_index do |arg, index|
-        return if (double_dash_index = @double_dash_index) && index >= double_dash_index
+        return if (stop_index = @stop_index) && index >= stop_index
 
         if arg.starts_with?('-') && arg != "-"
           @parser.invalid_option.call(arg)
