@@ -255,7 +255,15 @@ class Dir
     components.each do |component|
       subpath = File.join subpath, component
 
-      mkdir(subpath, mode) unless Dir.exists?(subpath)
+      begin
+        mkdir(subpath, mode)
+      rescue ex : Errno
+        if ex.errno != Errno::EEXIST || !Dir.exists?(subpath)
+          raise ex
+        end
+
+        # Ignore error
+      end
     end
 
     0
