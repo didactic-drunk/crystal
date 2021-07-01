@@ -45,8 +45,8 @@ class Compress::Zip::Writer
   end
 
   # Creates a new writer to the given *filename*.
-  def self.new(filename : String)
-    new(::File.new(filename, "w"), sync_close: true)
+  def self.new(filename : Path | String)
+    new(::File.new(filename.to_s, "w"), sync_close: true)
   end
 
   # Creates a new writer to the given *io*, yields it to the given block,
@@ -58,7 +58,7 @@ class Compress::Zip::Writer
 
   # Creates a new writer to the given *filename*, yields it to the given block,
   # and closes it at the end.
-  def self.open(filename : String)
+  def self.open(filename : Path | String)
     writer = new(filename)
     yield writer ensure writer.close
   end
@@ -66,8 +66,8 @@ class Compress::Zip::Writer
   # Adds an entry that will have the given *filename* and current
   # time (`Time.utc`) and yields an `IO` to write that entry's
   # contents.
-  def add(filename : String)
-    add(Entry.new(filename)) do |io|
+  def add(filename : Path | String)
+    add(Entry.new(filename.to_s)) do |io|
       yield io
     end
   end
